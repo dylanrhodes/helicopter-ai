@@ -21,18 +21,16 @@ class Cave():
 		self.top_endpoints = [
 			(W, 0),
 			(0, 0),
-			(0, H / 2 - cave_height / 2),
+			#(0, H / 2 - cave_height / 2),
 		]
 
 		self.bottom_endpoints = [
 			(W, H),
 			(0, H),
-			(0, H / 2 + cave_height / 2),
+			#(0, H / 2 + cave_height / 2),
 		]
 
-		self.midpoints = []
-		self.sample_midpoint(x=(W / 2))
-		self.sample_midpoint(x=W)
+		self.midpoints = [(0, H / 2 - cave_height / 2)]
 		self.update_walls()
 		self.obstacles = pygame.sprite.LayeredUpdates()
 	
@@ -50,7 +48,7 @@ class Cave():
 		midpoints = []
 
 		for midpoint in self.midpoints:
-			if midpoint >= -self.HORIZONTAL_SPEED:
+			if midpoint[0] >= -1200:
 				midpoints.append((midpoint[0] + self.HORIZONTAL_SPEED, midpoint[1]))
 
 		self.midpoints = midpoints
@@ -63,8 +61,8 @@ class Cave():
 		if len(self.obstacles.sprites()) > 0:
 			oldest_obstacle = self.obstacles.get_sprite(0)
 
-		if oldest_obstacle.position[0] < 0:
-			self.obstacles.remove(oldest_obstacle)
+			if oldest_obstacle.position[0] < 0:
+				self.obstacles.remove(oldest_obstacle)
 
 	def update_walls(self):
 		pygame.draw.polygon(self.screen, self.WALL_COLOR,
@@ -80,12 +78,14 @@ class Cave():
 		for heli in heli_group.sprites():
 			if self.collides(heli.rect):
 				heli.image = pygame.image.load(EXPLOSION_IMG)
-				continue
+				return True
 
 			for obstacle in self.obstacles.sprites():
 				if pygame.sprite.collide_rect(heli, obstacle):
 					heli.image = pygame.image.load(EXPLOSION_IMG)
-					break
+					return True
+
+		return False
 
 	def collides(self, rect):
 		return (
