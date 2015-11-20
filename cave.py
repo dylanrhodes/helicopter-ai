@@ -2,7 +2,11 @@ import numpy as np
 import matplotlib.path as path
 import pygame
 import random
+from sprites import ObstacleSprite
 
+
+EXPLOSION_IMG = 'explosion.png'
+OBSTACLE_IMG = 'obstacle4.png'
 
 class Cave():
 	MIN_HEIGHT = 25
@@ -30,6 +34,7 @@ class Cave():
 		self.sample_midpoint(x=(W / 2))
 		self.sample_midpoint(x=W)
 		self.update_walls()
+		self.obstacles = pygame.sprite.LayeredUpdates()
 	
 	def sample_midpoint(self, x=None):
 		if x is None:
@@ -51,6 +56,16 @@ class Cave():
 		self.midpoints = midpoints
 		self.update_walls()
 
+		self.obstacles.update(100)
+		self.obstacles.draw(self.screen)
+
+		# Remove reference to obstacle once it falls off screen
+		if len(self.obstacles.sprites()) > 0:
+			oldest_obstacle = self.obstacles.get_sprite(0)
+
+		if oldest_obstacle.position[0] < 0:
+			self.obstacles.remove(oldest_obstacle)
+
 	def update_walls(self):
 		pygame.draw.polygon(self.screen, self.WALL_COLOR,
 			self.midpoints + self.top_endpoints)
@@ -65,6 +80,12 @@ class Cave():
 		for heli in heli_group.sprites():
 			if self.collides(heli.rect):
 				heli.image = pygame.image.load(EXPLOSION_IMG)
+				continue
+
+			for obstacle in self.obstacles.sprites():
+				if pygame.sprite.collide_rect(heli, obstacle):
+					heli.image = pygame.image.load(EXPLOSION_IMG)
+					break
 
 	def collides(self, rect):
 		return (
@@ -74,5 +95,7 @@ class Cave():
 			self.bottom.contains_point(rect.bottomright)
 		)
 
-	def spawn_obstacle(obstacles, y_min, y_max):
-		pass
+	def spawn_obstacle(self, y_min, y_max):
+		W = self.screen.get_width()
+		obstacle = ObstacleSprite(OBSTACLE_IMG, y_min, y_max, W + W / 2)
+		self.obstacles.add(obstacle)
