@@ -40,6 +40,6 @@ if __name__ == '__main__':
 		print 'Agent scored: {}'.format(scores)
 		print 'Mean score: {}'.format(np.mean(np.array(scores)))
 		print 'Max score: {}'.format(np.max(np.array(scores)))
-		pdb.set_trace()
+		#pdb.set_trace()
 		agent.save('chain_agent.txt')
 		np.save(open('score_history.txt', 'wb'), np.array(scores))

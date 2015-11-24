@@ -1,7 +1,7 @@
 from chainer import FunctionSet, optimizers, Variable
 import chainer.functions as F
 import copy
-from history import History
+from history import *
 import numpy as np
 import pdb
 import random
@@ -82,7 +82,7 @@ class ChainerAgent(Agent):
 		self.optimizer.setup(self.model)
 		self.update_target()
 
-		self.history = History()
+		self.history = ChainHistory()
 
 	def forward(self, state, action, reward, new_state, is_terminal):
 		#TODO: add support for minibatch learning
@@ -91,17 +91,18 @@ class ChainerAgent(Agent):
 		q = self.get_q(Variable(state))
 		q_target = self.get_target_q(Variable(new_state))
 
-		max_target_q = np.max(q_target.data)
+		max_target_q = np.max(q_target.data, axis=1)
 
 		target = np.copy(q.data)
 
-		if is_terminal:
-			target[0, action] = reward
-		else:
-			target[0, action] = reward + self.gamma * q_target.data[0, action]
+		for i in xrange(target.shape[0]):
+			if is_terminal[i]:
+				target[i, action[i]] = reward[i]
+			else:
+				target[i, action[i]] = reward[i] + self.gamma * max_target_q[i]
 		
 		loss = F.mean_squared_error(Variable(target), q)
-		return loss, q.data[0, action]
+		return loss, np.mean(q.data[:, action[i]])
 
 	def get_q(self, state):
 		h1 = F.relu(self.model.l1(state))
@@ -117,19 +118,17 @@ class ChainerAgent(Agent):
 		self.history.add((state, action, reward, new_state, is_terminal))
 
 		self.iterations += 1
-		#if self.iterations % 1000 == 0:
+		#if self.iterations % 10000 == 0:
 		#	self.update_target()
-
-		for i in xrange(min(10, self.history.length)):
-			state, action, reward, new_state, is_terminal = self.history.get()
-			loss, q = self.forward(state, action, reward, new_state, is_terminal)
-
-			self.optimizer.zero_grads()
-			loss.backward()
-			self.optimizer.update()
+		
+		state, action, reward, new_state, is_terminal = self.history.get(num=32)
+		loss, q = self.forward(state, action, reward, new_state, is_terminal)
+		self.optimizer.zero_grads()
+		loss.backward()
+		self.optimizer.update()
 
 	def act(self, state):
-		self.epsilon -= (1.0 / 100000)
+		self.epsilon -= (1.0 / 50000)
 
 		if random.random() < 0.0001:
 			print 'Epsilon greedy strategy current epsilon: {}'.format(self.epsilon)
@@ -139,13 +138,22 @@ class ChainerAgent(Agent):
 
 		q = self.get_q(Variable(state))
 
-		#if random.random() < 0.01:
-		if q.data[0,1] > q.data[0,0]:
-			print 'On: {}'.format(q.data)
-		else:
-			print 'Off: {}'.format(q.data)
+		if random.random() < 0.01:
+			if q.data[0,1] > q.data[0,0]:
+				print 'On: {}'.format(q.data)
+			else:
+				print 'Off: {}'.format(q.data)
 
 		return q.data[0,1] > q.data[0,0]
+
+	def save(self, file_name):
+		with open(file_name, 'wb') as out_file:
+			pickle.dump(self.model, out_file)
+
+	def load(self, file_name):
+		with open(file_name, 'rb') as in_file:
+			model = pickle.loads(in_file)
+			self.model.copy_parameters_from(model)
 
 	def update_target(self):
 		self.target_model = copy.deepcopy(self.model)
