@@ -22,6 +22,9 @@ class Agent(object):
 	def save(self, file_name):
 		pass
 
+	def start_new_game(self):
+		pass
+
 class RandomAgent(Agent):
 	def __init__(self):
 		super(RandomAgent, self).__init__()
@@ -55,14 +58,15 @@ class QAgent(Agent):
 		np.save(open(file_name, 'wb'), self.utility)
 
 class ChainerAgent(Agent):
-	def __init__(self, epsilon=1.0):
+	def __init__(self, epsilon=1.0, frames_per_action=3):
 		super(ChainerAgent, self).__init__()
 		cuda.init()
 		self.epsilon = epsilon
 		self.gamma = 0.99
 		self.iterations = 0
+		
 		self.model = FunctionSet(
-			l1 = F.Linear(9, 256),
+			l1 = F.Linear(9 * frames_per_action, 256),
 			l2 = F.Linear(256, 256),
 			l3 = F.Linear(256, 256),
 			l4 = F.Linear(256, 2),
@@ -72,7 +76,11 @@ class ChainerAgent(Agent):
 		self.optimizer.setup(self.model)
 		self.update_target()
 
-		self.history = ChainHistory()
+		self.num_frames = 0
+		self.frames_per_action = frames_per_action
+		self.prev_reward = 0.0
+
+		self.history = ChainHistory(state_len=(9 * frames_per_action))
 
 	def forward(self, state, action, reward, new_state, is_terminal):
 		q = self.get_q(Variable(state))
@@ -105,7 +113,20 @@ class ChainerAgent(Agent):
 		return self.target_model.l4(h3)
 
 	def accept_reward(self, state, action, reward, new_state, is_terminal):
-		self.history.add((state, action, reward, new_state, is_terminal))
+		self.prev_reward += reward
+
+		if not (is_terminal or self.num_frames % self.frames_per_action == 0):
+			return
+
+		if self.num_frames == self.frames_per_action:
+			self.prev_reward = 0.0
+			self.prev_action = action
+			return
+
+		self.history.add((self.prev_state, self.prev_action, self.prev_reward,
+			self.curr_state, is_terminal))
+		self.prev_reward = 0.0
+		self.prev_action = action
 
 		self.iterations += 1
 		if self.iterations % 10000 == 0:
@@ -124,9 +145,35 @@ class ChainerAgent(Agent):
 		loss.backward()
 		self.optimizer.update()
 
+	def update_state_vector(self, state):
+		if self.num_frames < self.frames_per_action:
+			if self.num_frames == 0:
+				self.curr_state = state
+			else:
+				self.curr_state = np.hstack((self.curr_state, state))
+		else:
+			if self.num_frames < 2 * self.frames_per_action:
+				if self.num_frames == self.frames_per_action:
+					self.prev_state = np.copy(self.curr_state[:, :9])
+				else:
+					self.prev_state = np.hstack((self.prev_state, self.curr_state[:, :9]))
+			else:
+				self.prev_state[:, :-9] = self.prev_state[:, 9:]
+				self.prev_state[:, -9:] = self.curr_state[:, :9]
+
+			self.curr_state[:, :-9] = self.curr_state[:, 9:]
+			self.curr_state[:, -9:] = state
+
+		self.num_frames += 1
+
 	def act(self, state):
+		self.update_state_vector(state)
+
+		if self.num_frames < self.frames_per_action - 1 or self.num_frames % self.frames_per_action != 0:
+			return None
+
 		if self.epsilon > 0.05:
-			self.epsilon -= (0.95 / 150000)
+			self.epsilon -= (0.95 / 500000)
 
 		if random.random() < 0.0001:
 			print 'Epsilon greedy strategy current epsilon: {}'.format(self.epsilon)
@@ -134,7 +181,7 @@ class ChainerAgent(Agent):
 		if random.random() < self.epsilon:
 			return random.random() > 0.375
 
-		q = self.get_q(Variable(cuda.to_gpu(state)))
+		q = self.get_q(Variable(cuda.to_gpu(self.curr_state)))
 
 		if random.random() < 0.01:
 			if q.data[0,1] > q.data[0,0]:
@@ -158,6 +205,9 @@ class ChainerAgent(Agent):
 	def update_target(self):
 		self.target_model = copy.deepcopy(self.model)
 		self.target_model = self.target_model.to_gpu()
+
+	def start_new_game(self):
+		self.num_frames = 0
 
 
 class ConvQAgent(Agent):

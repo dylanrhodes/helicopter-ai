@@ -14,7 +14,7 @@ class HelicopterSprite(pygame.sprite.Sprite):
 		self.image = pygame.image.load(image)
 		self.position = position
 		self.speed = 0.0
-		self.throttle = False
+		self.throttle = True
 
 	def update(self, obstacles):
 		if self.throttle:
