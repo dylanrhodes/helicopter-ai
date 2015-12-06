@@ -2,7 +2,7 @@ import numpy as np
 import random
 
 
-MAX_SIZE = 50000
+MAX_SIZE = 10000
 
 class History(object):
 	def __init__(self, ):

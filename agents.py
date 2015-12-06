@@ -33,8 +33,6 @@ class RandomAgent(Agent):
 		return random.random() > 0.375
 
 class QAgent(Agent):
-	# TODO: make policy annealed epsilon-greedy
-
 	def __init__(self, state_space, action_space, alpha=0.05, gamma=0.99):
 		super(QAgent, self).__init__()
 		self.alpha = alpha
@@ -57,8 +55,11 @@ class QAgent(Agent):
 	def save(self, file_name):
 		np.save(open(file_name, 'wb'), self.utility)
 
+	def load(self, file_name):
+		self.utility = np.load(open(file_name, 'rb'))
+
 class ChainerAgent(Agent):
-	def __init__(self, epsilon=1.0, frames_per_action=3):
+	def __init__(self, epsilon=1.0, frames_per_action=4):
 		super(ChainerAgent, self).__init__()
 		cuda.init()
 		self.epsilon = epsilon
@@ -173,7 +174,7 @@ class ChainerAgent(Agent):
 			return None
 
 		if self.epsilon > 0.05:
-			self.epsilon -= (0.95 / 500000)
+			self.epsilon -= (0.95 / 1000000)
 
 		if random.random() < 0.0001:
 			print 'Epsilon greedy strategy current epsilon: {}'.format(self.epsilon)
@@ -211,7 +212,7 @@ class ChainerAgent(Agent):
 
 
 class ConvQAgent(Agent):
-	def __init__(self, frames_per_action=3):
+	def __init__(self, frames_per_action=4):
 		super(ConvQAgent, self).__init__()
 		cuda.init()
 		self.epsilon = 1.0
@@ -246,13 +247,22 @@ class ConvQAgent(Agent):
 		if self.num_frames < self.frames_per_action - 1 or self.num_frames % self.frames_per_action != 0:
 			return None
 
+		if random.random() < 0.001:
+			print 'Epsilon: {}'.format(self.epsilon)
+
 		if self.epsilon > 0.05:
-			self.epsilon -= (0.95 / 500000)
+			self.epsilon -= (0.95 / 300000)
 
 		if random.random() < self.epsilon:
 			return random.random() > 0.375
 
-		q = self.get_q(Variable(cuda.to_gpu(self.curr_state)))
+		q = self.get_q(Variable(cuda.to_gpu(self.curr_state[np.newaxis, :, :, :])))
+
+		if random.random() < 0.01:
+			if q.data[0,1] > q.data[0,0]:
+				print 'On: {}'.format(q.data)
+			else:
+				print 'Off: {}'.format(q.data)
 
 		return q.data[0,1] > q.data[0,0]
 
@@ -314,7 +324,7 @@ class ConvQAgent(Agent):
 		target = cp.copy(q.data)
 
 		for i in xrange(target.shape[0]):
-			curr_action = int(action[i])
+			curr_action = int(action[i, 0])
 			if is_terminal[i]:
 				target[i, curr_action] = reward[i]
 			else:
@@ -339,14 +349,15 @@ class ConvQAgent(Agent):
 
 	def save(self, file_name):
 		with open(file_name, 'wb') as out_file:
-			pickle.dump(self.model, out_file)
+			pickle.dump((self.model, self.optimizer), out_file)
 
 	def load(self, file_name):
 		self.epsilon = 0.0
 
 		with open(file_name, 'rb') as in_file:
-			model = pickle.load(in_file)
+			model, optimizer = pickle.load(in_file)
 			self.model.copy_parameters_from(model.parameters)
+			self.optimizer = optimizer
 
 	def start_new_game(self):
 		self.num_frames = 0
